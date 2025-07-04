@@ -22,9 +22,17 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
       formData.append('user_id', user);
       formData.append('org_id', org);
 
-      const response = await axios.post('http://localhost:8000/integrations/hubspot/authorize', formData);
+      const response = await axios.post(
+        'http://localhost:8000/integrations/hubspot/authorize',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
 
-      if (!response.data.url) {
+      if (!response.data?.url) {
         throw new Error('Failed to get authorization URL');
       }
 
@@ -48,20 +56,31 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
 
   const checkConnectionStatus = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/integrations/hubspot/credentials', {
-        user_id: user,
-        org_id: org
-      }, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
-      if (response.data.credentials) {
+      if (!user || !org) {
+        throw new Error('User and organization IDs are required');
+      }
+
+      // Format the data as form data
+      const formData = new FormData();
+      formData.append('user_id', user);
+      formData.append('org_id', org);
+
+      const response = await axios.post(
+        'http://localhost:8000/integrations/hubspot/credentials',
+        formData
+      );
+
+      if (response.data && response.data.credentials) {
         setIsConnected(true);
-        setIntegrationParams(prev => ({ ...prev, credentials: response.data.credentials, type: 'HubSpot' }));
+        setIntegrationParams(prev => ({ 
+          ...prev, 
+          credentials: response.data.credentials, 
+          type: 'HubSpot' 
+        }));
       }
     } catch (error) {
       console.error('Error checking connection:', error);
+      setError(error.response?.data?.detail || error.message);
     } finally {
       setIsLoading(false);
     }

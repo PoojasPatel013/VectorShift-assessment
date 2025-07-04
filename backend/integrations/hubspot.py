@@ -20,7 +20,7 @@ REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
 
 # HubSpot OAuth authorization URL
 authorization_url = (
-    f'https://app.hubspot.com/oauth/v1/authorize?'
+    f'https://app.hubspot.com/oauth/authorize?'
     f'client_id={CLIENT_ID}&'
     f'redirect_uri={REDIRECT_URI}&'
     'scope=contacts.read&'
@@ -29,6 +29,13 @@ authorization_url = (
 
 async def authorize_hubspot(user_id: str, org_id: str):
     try:
+        # Validate input
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=400,
+                detail="User ID and Organization ID are required"
+            )
+
         # Generate state and store it in Redis
         state_data = {
             'state': secrets.token_urlsafe(32),
@@ -38,7 +45,7 @@ async def authorize_hubspot(user_id: str, org_id: str):
         encoded_state = base64.urlsafe_b64encode(json.dumps(state_data).encode('utf-8')).decode('utf-8')
 
         # Construct the full authorization URL
-        auth_url = authorization_url + encoded_state
+        auth_url = f"{authorization_url}{encoded_state}"
         
         # Store the state in Redis
         await add_key_value_redis(
@@ -48,6 +55,8 @@ async def authorize_hubspot(user_id: str, org_id: str):
         )
 
         return {"url": auth_url}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -83,7 +92,7 @@ async def oauth2callback_hubspot(request: Request):
             
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                'https://api.hubapi.com/oauth/v1/token',
+                'https://api.hubapi.com/oauth/token',
                 data={
                     'grant_type': 'authorization_code',
                     'code': code,
@@ -123,7 +132,7 @@ async def oauth2callback_hubspot(request: Request):
     async with httpx.AsyncClient() as client:
         # Exchange authorization code for access token
         response = await client.post(
-            'https://api.hubapi.com/oauth/v1/token',
+            'https://api.hubapi.com/oauth/token',
             data={
                 'grant_type': 'authorization_code',
                 'code': code,
@@ -147,9 +156,39 @@ async def oauth2callback_hubspot(request: Request):
     """
     return HTMLResponse(content=close_window_script)
 
-async def get_hubspot_credentials(user_id, org_id):
-    credentials = await get_value_redis(f'hubspot_credentials:{org_id}:{user_id}')
-    return credentials
+async def get_hubspot_credentials(user_id: str, org_id: str):
+    try:
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=400,
+                detail="User ID and Organization ID are required"
+            )
+
+        credentials = await get_value_redis(f'hubspot_credentials:{org_id}:{user_id}')
+        
+        if not credentials:
+            raise HTTPException(
+                status_code=404,
+                detail="No credentials found for this user/org"
+            )
+
+        # Parse the JSON credentials
+        try:
+            parsed_credentials = json.loads(credentials)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid credentials format"
+            )
+
+        return {"credentials": parsed_credentials}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving credentials: {str(e)}"
+        )
 
 async def create_integration_item_metadata_object(response_json, item_type, parent_id=None, parent_name=None):
     return IntegrationItem(

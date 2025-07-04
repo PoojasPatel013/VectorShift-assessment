@@ -2,6 +2,7 @@ import os
 import redis.asyncio as redis
 from kombu.utils.url import safequote
 from fastapi import HTTPException
+from redis.exceptions import ConnectionError, RedisError
 
 # Configure Redis connection
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
@@ -26,8 +27,10 @@ async def add_key_value_redis(key: str, value: str, expire: int = None):
             if expire:
                 await client.expire(key, expire)
             return True
-    except redis.exceptions.ConnectionError as e:
+    except ConnectionError as e:
         raise HTTPException(status_code=500, detail=f"Redis connection error: {str(e)}")
+    except RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error adding to Redis: {str(e)}")
 
@@ -37,8 +40,10 @@ async def get_value_redis(key: str):
         async with redis_client.client() as client:
             value = await client.get(key)
             return value
-    except redis.exceptions.ConnectionError as e:
+    except ConnectionError as e:
         raise HTTPException(status_code=500, detail=f"Redis connection error: {str(e)}")
+    except RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting from Redis: {str(e)}")
 
@@ -48,7 +53,9 @@ async def delete_key_redis(key: str):
         async with redis_client.client() as client:
             await client.delete(key)
             return True
-    except redis.exceptions.ConnectionError as e:
+    except ConnectionError as e:
         raise HTTPException(status_code=500, detail=f"Redis connection error: {str(e)}")
+    except RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting from Redis: {str(e)}")
