@@ -18,7 +18,6 @@ CLIENT_ID = '2d1c2e87-4277-4736-aba3-3c319dfc21b0'
 CLIENT_SECRET = '5311f976-c540-465a-88e5-76515fd3785b'
 REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
 
-# HubSpot OAuth authorization URL
 authorization_url = (
     f'https://app.hubspot.com/oauth/authorize?'
     f'client_id={CLIENT_ID}&'
@@ -29,14 +28,12 @@ authorization_url = (
 
 async def authorize_hubspot(user_id: str, org_id: str):
     try:
-        # Validate input
         if not user_id or not org_id:
             raise HTTPException(
                 status_code=400,
                 detail="User ID and Organization ID are required"
             )
 
-        # Generate state and store it in Redis
         state_data = {
             'state': secrets.token_urlsafe(32),
             'user_id': user_id,
@@ -44,10 +41,8 @@ async def authorize_hubspot(user_id: str, org_id: str):
         }
         encoded_state = base64.urlsafe_b64encode(json.dumps(state_data).encode('utf-8')).decode('utf-8')
 
-        # Construct the full authorization URL
         auth_url = f"{authorization_url}{encoded_state}"
         
-        # Store the state in Redis
         await add_key_value_redis(
             f'hubspot_state:{org_id}:{user_id}',
             json.dumps(state_data),
@@ -111,7 +106,6 @@ async def oauth2callback_hubspot(request: Request):
         credentials = response.json()
         await add_key_value_redis(f'hubspot_credentials:{org_id}:{user_id}', json.dumps(credentials), expire=600)
         
-        # Clean up state after successful authentication
         await delete_key_redis(f'hubspot_state:{org_id}:{user_id}')
         
         close_window_script = """
@@ -130,7 +124,6 @@ async def oauth2callback_hubspot(request: Request):
         raise HTTPException(status_code=400, detail='State does not match.')
 
     async with httpx.AsyncClient() as client:
-        # Exchange authorization code for access token
         response = await client.post(
             'https://api.hubapi.com/oauth/token',
             data={
@@ -172,7 +165,6 @@ async def get_hubspot_credentials(user_id: str, org_id: str):
                 detail="No credentials found for this user/org"
             )
 
-        # Parse the JSON credentials
         try:
             parsed_credentials = json.loads(credentials)
         except json.JSONDecodeError:
@@ -191,13 +183,26 @@ async def get_hubspot_credentials(user_id: str, org_id: str):
         )
 
 async def create_integration_item_metadata_object(response_json, item_type, parent_id=None, parent_name=None):
+    # Handle name differently based on item type
+    if item_type == 'contact':
+        name = (
+            response_json.get('properties', {}).get('firstname', '') + 
+            ' ' + 
+            response_json.get('properties', {}).get('lastname', '')
+        ).strip()
+    elif item_type == 'company':
+        name = response_json.get('properties', {}).get('name', '')
+    else:
+        name = response_json.get('name', '')
+
     return IntegrationItem(
         id=response_json.get('id'),
-        name=response_json.get('properties', {}).get('firstname', '') + ' ' + response_json.get('properties', {}).get('lastname', ''),
+        name=name,
         type=item_type,
         parent_id=parent_id,
         parent_name=parent_name,
-        properties=response_json.get('properties', {})
+        properties=response_json,
+        url=response_json.get('url')  # Include URL if present
     )
 
 async def get_items_hubspot(credentials):
@@ -211,7 +216,6 @@ async def get_items_hubspot(credentials):
     }
     
     async with httpx.AsyncClient() as client:
-        # First get all contacts
         contacts_response = await client.get(
             'https://api.hubapi.com/crm/v3/objects/contacts',
             headers=headers
@@ -225,7 +229,6 @@ async def get_items_hubspot(credentials):
                 contact_id = contact.get('id')
                 contact_data = contact.get('properties', {})
                 
-                # Get contact details
                 contact_response = await client.get(
                     f'https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}',
                     headers=headers
@@ -247,7 +250,6 @@ async def get_items_hubspot(credentials):
                         None
                     ))
         
-        # Get companies
         companies_response = await client.get(
             'https://api.hubapi.com/crm/v3/objects/companies',
             headers=headers
@@ -259,7 +261,6 @@ async def get_items_hubspot(credentials):
                 company_id = company.get('id')
                 company_data = company.get('properties', {})
                 
-                # Get company details
                 company_response = await client.get(
                     f'https://api.hubapi.com/crm/v3/objects/companies/{company_id}',
                     headers=headers

@@ -12,12 +12,10 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
       setIsLoading(true);
       setError('');
       
-      // Ensure we have valid user and org IDs
       if (!user || !org) {
         throw new Error('User and organization IDs are required');
       }
 
-      // Format the data as form data
       const formData = new FormData();
       formData.append('user_id', user);
       formData.append('org_id', org);
@@ -36,10 +34,8 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
         throw new Error('Failed to get authorization URL');
       }
 
-      // Open OAuth window
       const oauthWindow = window.open(response.data.url, '_blank', 'width=800,height=600');
       
-      // Poll to check if window is closed
       const checkWindowClosed = setInterval(() => {
         if (oauthWindow.closed) {
           clearInterval(checkWindowClosed);
@@ -60,7 +56,6 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
         throw new Error('User and organization IDs are required');
       }
 
-      // Format the data as form data
       const formData = new FormData();
       formData.append('user_id', user);
       formData.append('org_id', org);

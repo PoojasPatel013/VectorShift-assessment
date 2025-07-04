@@ -7,9 +7,9 @@ from integrations.hubspot import authorize_hubspot, get_hubspot_credentials, get
 
 app = FastAPI()
 
-# CORS Configuration
+
 origins = [
-    "http://localhost:3000",  # React app address
+    "http://localhost:3000",  
 ]
 
 app.add_middleware(

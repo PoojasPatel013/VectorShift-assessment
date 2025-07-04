@@ -12,7 +12,6 @@ from integrations.integration_item import IntegrationItem
 
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-# Notion Integration Token (replace with your actual token)
 INTEGRATION_TOKEN = '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'
 
 NOTION_API_VERSION = '2023-08-01'
@@ -82,7 +81,6 @@ async def get_notion_credentials(user_id, org_id):
     return credentials
 
 def _recursive_dict_search(data, target_key):
-    """Recursively search for a key in a dictionary of dictionaries."""
     if target_key in data:
         return data[target_key]
 
@@ -102,7 +100,6 @@ def _recursive_dict_search(data, target_key):
 def create_integration_item_metadata_object(
     response_json: str,
 ) -> IntegrationItem:
-    """creates an integration metadata object from the response"""
     name = _recursive_dict_search(response_json['properties'], 'content')
     parent_type = (
         ''
@@ -143,7 +140,6 @@ async def get_items_notion(credentials):
     }
     
     async with httpx.AsyncClient() as client:
-        # Search for all databases
         databases_url = f'{NOTION_API_URL}/search'
         response = await client.post(
             databases_url,
@@ -160,12 +156,10 @@ async def get_items_notion(credentials):
         results = response.json().get('results', [])
         items = []
         
-        # For each database, get its entries
         for database in results:
             database_id = database.get('id')
             database_name = database.get('title', [{}])[0].get('plain_text', '')
             
-            # Query database entries
             entries_url = f'{NOTION_API_URL}/databases/{database_id}/query'
             entries_response = await client.post(
                 entries_url,

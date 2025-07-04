@@ -28,8 +28,6 @@ async def authorize_airtable(user_id, org_id):
     
     return {'success': True}
 
-    return auth_url
-
 async def oauth2callback_airtable(request: Request):
     pass
 
