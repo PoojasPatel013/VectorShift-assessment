@@ -12,28 +12,24 @@ from integrations.integration_item import IntegrationItem
 
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-CLIENT_ID = 'XXX'
-CLIENT_SECRET = 'XXX'
-encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
+# Notion Integration Token (replace with your actual token)
+INTEGRATION_TOKEN = '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'
 
-REDIRECT_URI = 'http://localhost:8000/integrations/notion/oauth2callback'
-authorization_url = f'https://api.notion.com/v1/oauth/authorize?client_id={CLIENT_ID}&response_type=code&owner=user&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fintegrations%2Fnotion%2Foauth2callback'
+NOTION_API_VERSION = '2023-08-01'
+
+NOTION_API_URL = 'https://api.notion.com/v1'
 
 async def authorize_notion(user_id, org_id):
-    state_data = {
-        'state': secrets.token_urlsafe(32),
-        'user_id': user_id,
-        'org_id': org_id
+    
+    credentials = {
+        'integration_token': INTEGRATION_TOKEN
     }
-    encoded_state = json.dumps(state_data)
-    await add_key_value_redis(f'notion_state:{org_id}:{user_id}', encoded_state, expire=600)
-
-    return f'{authorization_url}&state={encoded_state}'
+    await add_key_value_redis(f'notion_credentials:{org_id}:{user_id}', json.dumps(credentials), expire=600)
+    
+    return {'success': True}
 
 async def oauth2callback_notion(request: Request):
-    if request.query_params.get('error'):
-        raise HTTPException(status_code=400, detail=request.query_params.get('error'))
-    code = request.query_params.get('code')
+    pass
     encoded_state = request.query_params.get('state')
     state_data = json.loads(encoded_state)
 
@@ -135,24 +131,64 @@ def create_integration_item_metadata_object(
 
     return integration_item_metadata
 
-async def get_items_notion(credentials) -> list[IntegrationItem]:
-    """Aggregates all metadata relevant for a notion integration"""
-    credentials = json.loads(credentials)
-    response = requests.post(
-        'https://api.notion.com/v1/search',
-        headers={
-            'Authorization': f'Bearer {credentials.get("access_token")}',
-            'Notion-Version': '2022-06-28',
-        },
-    )
+async def get_items_notion(credentials):
+    if not credentials:
+        return []
 
+    integration_token = credentials.get('integration_token')
+    headers = {
+        'Authorization': f'Bearer {integration_token}',
+        'Notion-Version': NOTION_API_VERSION,
+        'Content-Type': 'application/json'
+    }
+    
+    async with httpx.AsyncClient() as client:
+        # Search for all databases
+        databases_url = f'{NOTION_API_URL}/search'
+        response = await client.post(
+            databases_url,
+            headers=headers,
+            json={
+                'filter': {
+                    'property': 'object',
+                    'value': 'database'
+                }
+            }
+        )
+        
     if response.status_code == 200:
-        results = response.json()['results']
-        list_of_integration_item_metadata = []
-        for result in results:
-            list_of_integration_item_metadata.append(
-                create_integration_item_metadata_object(result)
+        results = response.json().get('results', [])
+        items = []
+        
+        # For each database, get its entries
+        for database in results:
+            database_id = database.get('id')
+            database_name = database.get('title', [{}])[0].get('plain_text', '')
+            
+            # Query database entries
+            entries_url = f'{NOTION_API_URL}/databases/{database_id}/query'
+            entries_response = await client.post(
+                entries_url,
+                headers=headers,
+                json={}
             )
-
-        print(list_of_integration_item_metadata)
-    return
+            
+            if entries_response.status_code == 200:
+                entries = entries_response.json().get('results', [])
+                for entry in entries:
+                    items.append(await create_integration_item_metadata_object(
+                        {
+                            'id': entry.get('id'),
+                            'name': entry.get('properties', {}).get('Name', {}).get('title', [{}])[0].get('plain_text', ''),
+                            'database': database_name,
+                            'database_id': database_id,
+                            'properties': entry.get('properties', {}),
+                            'url': f'https://www.notion.so/{entry.get("id")}'
+                        },
+                        'notion_item',
+                        None,
+                        None
+                    ))
+        
+        return items
+    return []

@@ -1,86 +1,106 @@
-// hubspot.js
-
-import { useState, useEffect } from 'react';
-import {
-    Box,
-    Button,
-    CircularProgress
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Button, Box, CircularProgress, Typography } from '@mui/material';
 import axios from 'axios';
 
-export const HubspotIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
-    const [isConnected, setIsConnected] = useState(false);
-    const [isConnecting, setIsConnecting] = useState(false);
+export const HubSpotIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
 
-    // Function to open OAuth in a new window
-    const handleConnectClick = async () => {
-        try {
-            setIsConnecting(true);
-            const formData = new FormData();
-            formData.append('user_id', user);
-            formData.append('org_id', org);
-            const response = await axios.post(`http://localhost:8000/integrations/hubspot/authorize`, formData);
-            const authURL = response?.data;
+  const handleConnect = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      
+      const response = await axios.post('/integrations/hubspot/authorize', {
+        user_id: user,
+        org_id: org
+      });
 
-            const newWindow = window.open(authURL, 'HubSpot Authorization', 'width=600, height=600');
+      if (!response.data.url) {
+        throw new Error('Failed to get authorization URL');
+      }
 
-            // Polling for the window to close
-            const pollTimer = window.setInterval(() => {
-                if (newWindow?.closed !== false) { 
-                    window.clearInterval(pollTimer);
-                    handleWindowClosed();
-                }
-            }, 200);
-        } catch (e) {
-            setIsConnecting(false);
-            alert(e?.response?.data?.detail);
+      // Open OAuth window
+      const oauthWindow = window.open(response.data.url, '_blank', 'width=800,height=600');
+      
+      // Poll to check if window is closed
+      const checkWindowClosed = setInterval(() => {
+        if (oauthWindow.closed) {
+          clearInterval(checkWindowClosed);
+          checkConnectionStatus();
         }
+      }, 200);
+    } catch (error) {
+      setError(error.message);
+      setIsLoading(false);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    // Function to handle logic when the OAuth window closes
-    const handleWindowClosed = async () => {
-        try {
-            const formData = new FormData();
-            formData.append('user_id', user);
-            formData.append('org_id', org);
-            const response = await axios.post(`http://localhost:8000/integrations/hubspot/credentials`, formData);
-            const credentials = response.data; 
-            if (credentials) {
-                setIsConnecting(false);
-                setIsConnected(true);
-                setIntegrationParams(prev => ({ ...prev, credentials: credentials, type: 'HubSpot' }));
-            }
-            setIsConnecting(false);
-        } catch (e) {
-            setIsConnecting(false);
-            alert(e?.response?.data?.detail);
-        }
+  const checkConnectionStatus = async () => {
+    try {
+      const response = await axios.get('/integrations/hubspot/credentials');
+      if (response.data.credentials) {
+        setIsConnected(true);
+        setIntegrationParams(prev => ({ ...prev, credentials: response.data.credentials, type: 'HubSpot' }));
+      }
+    } catch (error) {
+      console.error('Error checking connection:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    useEffect(() => {
-        setIsConnected(integrationParams?.credentials ? true : false)
-    }, []);
+  useEffect(() => {
+    if (integrationParams?.credentials) {
+      setIsConnected(true);
+    }
+  }, [integrationParams?.credentials]);
 
-    return (
-        <>
-        <Box sx={{mt: 2}}>
-            Parameters
-            <Box display='flex' alignItems='center' justifyContent='center' sx={{mt: 2}}>
-                <Button 
-                    variant='contained' 
-                    onClick={isConnected ? () => {} :handleConnectClick}
-                    color={isConnected ? 'success' : 'primary'}
-                    disabled={isConnecting}
-                    style={{
-                        pointerEvents: isConnected ? 'none' : 'auto',
-                        cursor: isConnected ? 'default' : 'pointer',
-                        opacity: isConnected ? 1 : undefined
-                    }}
-                >
-                    {isConnected ? 'HubSpot Connected' : isConnecting ? <CircularProgress size={20} /> : 'Connect to HubSpot'}
-                </Button>
-            </Box>
-        </Box>
-      </>
-    );
-}
+  return (
+    <Box>
+      {isLoading ? (
+        <CircularProgress />
+      ) : (
+        <Button
+          variant="contained"
+          onClick={handleConnect}
+          disabled={isConnected}
+        >
+          {isConnected ? 'Connected' : 'Connect to HubSpot'}
+        </Button>
+      )}
+      {error && <Typography color="error">{error}</Typography>}
+    </Box>
+  );
+};
+
+  return (
+    <Box>
+      {isLoading && <CircularProgress />}
+      {error && <Typography color="error">{error}</Typography>}
+      
+      {isConnected ? (
+        <Button
+          variant="contained"
+          color="success"
+          onClick={handleConnect}
+          disabled={isLoading}
+        >
+          Reconnect to HubSpot
+        </Button>
+      ) : (
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleConnect}
+          disabled={isLoading}
+        >
+          {isLoading ? <CircularProgress size={20} /> : 'Connect to HubSpot'}
+        </Button>
+      )}
+    </Box>
+  )
+

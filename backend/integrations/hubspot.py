@@ -1,5 +1,4 @@
 # hubspot.py
-
 import datetime
 import json
 import secrets
@@ -15,11 +14,11 @@ from integrations.integration_item import IntegrationItem
 
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-# HubSpot API credentials (you'll need to replace these with your actual credentials)
-CLIENT_ID = 'your-client-id'  # Replace with your actual HubSpot Client ID
-CLIENT_SECRET = 'your-client-secret'  # Replace with your actual HubSpot Client Secret
+CLIENT_ID = '2d1c2e87-4277-4736-aba3-3c319dfc21b0'  
+CLIENT_SECRET = '5311f976-c540-465a-88e5-76515fd3785b'  
 REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
-authorization_url = f'https://app.hubspot.com/oauth/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=crm.objects.contacts.read%20crm.objects.contacts.write'
+# HubSpot OAuth authorization URL
+authorization_url = f'https://app-na2.hubspot.com/oauth/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=crm.objects.contacts.read%20crm.objects.contacts.write'
 
 encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
 
@@ -53,6 +52,7 @@ async def oauth2callback_hubspot(request: Request):
         raise HTTPException(status_code=400, detail='State does not match.')
 
     async with httpx.AsyncClient() as client:
+        # Exchange authorization code for access token
         response = await client.post(
             'https://api.hubapi.com/oauth/v1/token',
             data={
@@ -103,12 +103,74 @@ async def get_items_hubspot(credentials):
     }
     
     async with httpx.AsyncClient() as client:
-        response = await client.get(
+        # First get all contacts
+        contacts_response = await client.get(
             'https://api.hubapi.com/crm/v3/objects/contacts',
             headers=headers
         )
         
-    if response.status_code == 200:
-        contacts = response.json().get('results', [])
-        return [await create_integration_item_metadata_object(contact, 'contact') for contact in contacts]
+        items = []
+        
+        if contacts_response.status_code == 200:
+            contacts = contacts_response.json().get('results', [])
+            for contact in contacts:
+                contact_id = contact.get('id')
+                contact_data = contact.get('properties', {})
+                
+                # Get contact details
+                contact_response = await client.get(
+                    f'https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}',
+                    headers=headers
+                )
+                
+                if contact_response.status_code == 200:
+                    contact_details = contact_response.json()
+                    items.append(await create_integration_item_metadata_object(
+                        {
+                            'id': contact_id,
+                            'name': contact_data.get('firstname', '') + ' ' + contact_data.get('lastname', ''),
+                            'email': contact_data.get('email', ''),
+                            'phone': contact_data.get('phone', ''),
+                            'properties': contact_details,
+                            'url': f'https://app.hubspot.com/contacts/{contact_id}'
+                        },
+                        'contact',
+                        None,
+                        None
+                    ))
+        
+        # Get companies
+        companies_response = await client.get(
+            'https://api.hubapi.com/crm/v3/objects/companies',
+            headers=headers
+        )
+        
+        if companies_response.status_code == 200:
+            companies = companies_response.json().get('results', [])
+            for company in companies:
+                company_id = company.get('id')
+                company_data = company.get('properties', {})
+                
+                # Get company details
+                company_response = await client.get(
+                    f'https://api.hubapi.com/crm/v3/objects/companies/{company_id}',
+                    headers=headers
+                )
+                
+                if company_response.status_code == 200:
+                    company_details = company_response.json()
+                    items.append(await create_integration_item_metadata_object(
+                        {
+                            'id': company_id,
+                            'name': company_data.get('name', ''),
+                            'domain': company_data.get('domain', ''),
+                            'properties': company_details,
+                            'url': f'https://app.hubspot.com/companies/{company_id}'
+                        },
+                        'company',
+                        None,
+                        None
+                    ))
+        
+        return items
     return []
