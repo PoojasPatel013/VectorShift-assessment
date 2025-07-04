@@ -12,10 +12,17 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
       setIsLoading(true);
       setError('');
       
-      const response = await axios.post('/integrations/hubspot/authorize', {
-        user_id: user,
-        org_id: org
-      });
+      // Ensure we have valid user and org IDs
+      if (!user || !org) {
+        throw new Error('User and organization IDs are required');
+      }
+
+      // Format the data as form data
+      const formData = new FormData();
+      formData.append('user_id', user);
+      formData.append('org_id', org);
+
+      const response = await axios.post('http://localhost:8000/integrations/hubspot/authorize', formData);
 
       if (!response.data.url) {
         throw new Error('Failed to get authorization URL');
@@ -32,7 +39,7 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
         }
       }, 200);
     } catch (error) {
-      setError(error.message);
+      setError(error.response?.data?.detail || error.message);
       setIsLoading(false);
     } finally {
       setIsLoading(false);
@@ -41,7 +48,14 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
 
   const checkConnectionStatus = async () => {
     try {
-      const response = await axios.get('/integrations/hubspot/credentials');
+      const response = await axios.post('http://localhost:8000/integrations/hubspot/credentials', {
+        user_id: user,
+        org_id: org
+      }, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
       if (response.data.credentials) {
         setIsConnected(true);
         setIntegrationParams(prev => ({ ...prev, credentials: response.data.credentials, type: 'HubSpot' }));
@@ -58,24 +72,6 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
       setIsConnected(true);
     }
   }, [integrationParams?.credentials]);
-
-  return (
-    <Box>
-      {isLoading ? (
-        <CircularProgress />
-      ) : (
-        <Button
-          variant="contained"
-          onClick={handleConnect}
-          disabled={isConnected}
-        >
-          {isConnected ? 'Connected' : 'Connect to HubSpot'}
-        </Button>
-      )}
-      {error && <Typography color="error">{error}</Typography>}
-    </Box>
-  );
-};
 
   return (
     <Box>
@@ -98,9 +94,9 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
           onClick={handleConnect}
           disabled={isLoading}
         >
-          {isLoading ? <CircularProgress size={20} /> : 'Connect to HubSpot'}
+          Connect to HubSpot
         </Button>
       )}
     </Box>
-  )
-
+  );
+};
