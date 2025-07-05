@@ -15,9 +15,7 @@ from integrations.integration_item import IntegrationItem
 
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-PAT = 'patk2Vw5L2XmpCqnO.3a07a1ce7b5d7569e77b1b560d43735606c3886e23aacb61c51c87119e987034'  
 
-BASE_ID = 'appyuFfCG2GyU3yWD'  
 
 async def authorize_airtable(user_id, org_id):
     credentials = {

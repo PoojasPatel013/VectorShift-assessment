@@ -12,11 +12,6 @@ from integrations.integration_item import IntegrationItem
 
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-INTEGRATION_TOKEN = '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'
-
-NOTION_API_VERSION = '2023-08-01'
-
-NOTION_API_URL = 'https://api.notion.com/v1'
 
 async def authorize_notion(user_id, org_id):
     
